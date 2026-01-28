@@ -1,147 +1,144 @@
+// server.js - 优化数据路径逻辑
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs-extra');
 const path = require('path');
 
 const app = express();
-// 修复跨域配置：允许所有来源、所有请求方法、所有请求头
-app.use(cors({
-  origin: '*', // 允许所有域名访问（本地开发用，生产环境可指定具体域名）
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type']
-}));
+const port = 3000;
+let server = null;
+
+// 配置跨域和JSON解析
+app.use(cors({ origin: '*', methods: ['GET', 'POST'], allowedHeaders: ['Content-Type'] }));
 app.use(express.json());
 
-app.use(express.static(path.join(__dirname, '.')));
-// 新增：根路径访问时加载index.html
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+// 托管Vue静态资源
+const distPath = path.join(__dirname, 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  console.log(`✅ 托管静态资源：${distPath}`);
+}
 
-// 数据文件路径
-const dataPath = path.join(__dirname, 'response.json');
+// 区分环境配置数据文件路径
+let dataPath;
+if (process.env.NODE_ENV === 'production') {
+  // 生产环境：exe同级目录
+  dataPath = path.join(path.dirname(process.execPath), 'response.json');
+} else {
+  // 开发环境：项目根目录
+  dataPath = path.join(__dirname, 'response.json');
+}
+console.log(`📁 最终数据文件路径：${dataPath}`);
 
-// 初始化 json 文件（如果不存在则创建空数组，添加权限配置）
-async function initJsonFile() {
+// 初始化数据文件（确保目录和文件存在）
+async function initDataFile() {
   try {
+    await fs.ensureDir(path.dirname(dataPath));
     if (!await fs.pathExists(dataPath)) {
-      await fs.writeJson(dataPath, [], {
-        spaces: 2,
-        encoding: 'utf8'
-      });
-      console.log('初始化 response.json 成功');
+      await fs.writeJson(dataPath, [], { spaces: 2 });
+      console.log(`✅ 初始化数据文件：${dataPath}`);
     }
   } catch (err) {
-    console.error('初始化 json 文件失败：', err);
+    console.error('❌ 初始化数据失败：', err.message);
+    // 兜底：写入项目根目录
+    const fallbackPath = path.join(__dirname, 'response.json');
+    await fs.writeJson(fallbackPath, [], { spaces: 2 });
+    dataPath = fallbackPath;
+    console.log(`⚠️ 兜底初始化数据文件：${fallbackPath}`);
   }
 }
-initJsonFile();
 
-// 1. 获取所有数据
+// 获取所有任务
 app.get('/api/tasks', async (req, res) => {
   try {
     const data = await fs.readJson(dataPath);
-    res.json({
-      code: 200,
-      data
-    });
+    res.json({ code: 200, data });
   } catch (err) {
-    console.error('获取数据失败：', err);
-    res.status(500).json({
-      code: 500,
-      msg: '获取数据失败',
-      error: err.message
+    res.status(500).json({ 
+      code: 500, 
+      msg: '获取数据失败', 
+      error: err.message,
+      path: dataPath
     });
   }
 });
 
-// 2. 新增/修改数据（id 存在则修改，不存在则新增）
+// 保存任务（新增/修改）
 app.post('/api/tasks/save', async (req, res) => {
   try {
     const newTask = req.body;
-    // 校验必填字段（可选，增强健壮性）
     if (!newTask.projectName || !newTask.taskName) {
-      return res.status(400).json({
-        code: 400,
-        msg: '项目名称和任务名称不能为空'
-      });
+      return res.status(400).json({ code: 400, msg: '项目/任务名称不能为空' });
     }
-    const data = await fs.readJson(dataPath);
 
+    let data = await fs.readJson(dataPath);
     if (newTask.id) {
-      // 修改：保留原有逻辑
       const index = data.findIndex(item => item.id === newTask.id);
-      if (index > -1) {
-        data[index] = newTask;
-      } else {
-        return res.json({
-          code: 404,
-          msg: '未找到该任务'
-        });
-      }
+      if (index > -1) data[index] = newTask;
+      else return res.json({ code: 404, msg: '未找到该任务' });
     } else {
-      // 新增：补充创建时间（当前年月日）
       newTask.id = Date.now().toString();
-      // 格式化当前日期为 yyyy-MM-dd
-      const now = new Date();
-      newTask.createTime = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+      newTask.createTime = new Date().toLocaleDateString().replace(/\//g, '-');
       data.push(newTask);
     }
 
-    await fs.writeJson(dataPath, data, {
-      spaces: 2,
-      encoding: 'utf8'
-    });
-    res.json({
-      code: 200,
-      msg: '保存成功',
-      data: newTask
+    await fs.writeJson(dataPath, data, { spaces: 2 });
+    res.json({ 
+      code: 200, 
+      msg: '保存成功', 
+      data: newTask,
+      path: dataPath
     });
   } catch (err) {
-    console.error('保存数据失败：', err);
-    res.status(500).json({
-      code: 500,
-      msg: '保存失败',
-      error: err.message
+    console.error('保存失败：', err);
+    res.status(500).json({ 
+      code: 500, 
+      msg: '保存失败', 
+      error: err.message,
+      path: dataPath
     });
   }
 });
 
-// 3. 删除数据
+// 删除任务
 app.post('/api/tasks/delete', async (req, res) => {
   try {
-    const {
-      id
-    } = req.body;
-    if (!id) {
-      return res.status(400).json({
-        code: 400,
-        msg: '任务ID不能为空'
-      });
-    }
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ code: 400, msg: 'ID不能为空' });
+
     let data = await fs.readJson(dataPath);
     data = data.filter(item => item.id !== id);
-    await fs.writeJson(dataPath, data, {
-      spaces: 2,
-      encoding: 'utf8'
-    });
-    res.json({
-      code: 200,
-      msg: '删除成功'
+    await fs.writeJson(dataPath, data, { spaces: 2 });
+    res.json({ 
+      code: 200, 
+      msg: '删除成功',
+      path: dataPath
     });
   } catch (err) {
-    console.error('删除数据失败：', err);
-    res.status(500).json({
-      code: 500,
-      msg: '删除失败',
-      error: err.message
+    res.status(500).json({ 
+      code: 500, 
+      msg: '删除失败', 
+      error: err.message,
+      path: dataPath
     });
+  }
+});
+
+// 兜底路由（适配Vue前端路由）
+app.get('/*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  } else {
+    res.status(404).json({ code: 404, msg: '接口不存在' });
   }
 });
 
 // 启动服务
-const port = 3000;
-app.listen(port, () => {
-  console.log(`服务启动成功：http://localhost:${port}`);
-  console.log(`数据文件路径：${dataPath}`);
+initDataFile().then(() => {
+  server = app.listen(port, () => {
+    console.log(`✅ 服务启动：http://localhost:${port}`);
+  });
 });
+
+// 导出服务实例和配置
+module.exports = { server, app, port };

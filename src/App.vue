@@ -369,7 +369,7 @@ export default {
 
     resetSearch() {
       this.searchForm = {
-        dateRange: this.getMonthRange(),
+        dateRange: this.getWeekRange(),
         projectName: '',
         taskName: '',
         weeklyWorkContent: '',
