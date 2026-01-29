@@ -466,7 +466,7 @@ export default {
           }
         }
 
-        let baseText = `${index + 1}、${projectName}项目：${taskName}，当前进度${projectStatus}${note ? `（备注：${note}）` : ''}`;
+        let baseText = `${index + 1}、${projectName}项目：${taskName}，当前进度：${projectStatus}${note ? `（备注：${note}）` : ''}`;
         if (workText) baseText += workText;
 
         result.push(baseText);
