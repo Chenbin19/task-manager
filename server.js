@@ -1,4 +1,3 @@
-// server.js - 优化数据路径逻辑
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs-extra');
@@ -8,7 +7,7 @@ const app = express();
 const port = 3000;
 let server = null;
 
-// 配置跨域和JSON解析
+// 跨域与JSON解析配置
 app.use(cors({ origin: '*', methods: ['GET', 'POST'], allowedHeaders: ['Content-Type'] }));
 app.use(express.json());
 
@@ -22,15 +21,13 @@ if (fs.existsSync(distPath)) {
 // 区分环境配置数据文件路径
 let dataPath;
 if (process.env.NODE_ENV === 'production') {
-  // 生产环境：exe同级目录
-  dataPath = path.join(path.dirname(process.execPath), 'response.json');
+  dataPath = path.join(path.dirname(process.execPath), 'response.json'); // 生产：exe同级目录
 } else {
-  // 开发环境：项目根目录
-  dataPath = path.join(__dirname, 'response.json');
+  dataPath = path.join(__dirname, 'response.json'); // 开发：项目根目录
 }
 console.log(`📁 最终数据文件路径：${dataPath}`);
 
-// 初始化数据文件（确保目录和文件存在）
+// 初始化数据文件（确保目录/文件存在，失败时兜底）
 async function initDataFile() {
   try {
     await fs.ensureDir(path.dirname(dataPath));
@@ -40,7 +37,6 @@ async function initDataFile() {
     }
   } catch (err) {
     console.error('❌ 初始化数据失败：', err.message);
-    // 兜底：写入项目根目录
     const fallbackPath = path.join(__dirname, 'response.json');
     await fs.writeJson(fallbackPath, [], { spaces: 2 });
     dataPath = fallbackPath;
@@ -73,10 +69,12 @@ app.post('/api/tasks/save', async (req, res) => {
 
     let data = await fs.readJson(dataPath);
     if (newTask.id) {
+      // 修改：找到对应任务更新
       const index = data.findIndex(item => item.id === newTask.id);
       if (index > -1) data[index] = newTask;
       else return res.json({ code: 404, msg: '未找到该任务' });
     } else {
+      // 新增：生成ID和创建时间
       newTask.id = Date.now().toString();
       newTask.createTime = new Date().toLocaleDateString().replace(/\//g, '-');
       data.push(newTask);
@@ -118,6 +116,75 @@ app.post('/api/tasks/delete', async (req, res) => {
     res.status(500).json({ 
       code: 500, 
       msg: '删除失败', 
+      error: err.message,
+      path: dataPath
+    });
+  }
+});
+
+// 新增：清空所有任务（Excel导入前清空旧数据）
+app.post('/api/tasks/deleteAll', async (req, res) => {
+  try {
+    await fs.writeJson(dataPath, [], { spaces: 2 });
+    res.json({ 
+      code: 200, 
+      msg: '所有任务数据已清空',
+      path: dataPath,
+      data: []
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      code: 500, 
+      msg: '清空任务数据失败', 
+      error: err.message,
+      path: dataPath
+    });
+  }
+});
+
+// 新增：批量新增任务（Excel导入时批量写入）
+app.post('/api/tasks/batchSave', async (req, res) => {
+  try {
+    const taskList = req.body;
+    if (!Array.isArray(taskList) || taskList.length === 0) {
+      return res.status(400).json({ 
+        code: 400, 
+        msg: '批量新增失败：任务列表不能为空且必须是数组',
+        path: dataPath
+      });
+    }
+
+    // 读取现有数据，处理新任务ID和时间
+    let existingData = [];
+    try {
+      existingData = await fs.readJson(dataPath);
+    } catch (readErr) {
+      if (readErr.code !== 'ENOENT') throw readErr; // 非文件不存在错误才抛出
+    }
+
+    const newTaskList = taskList.map(task => ({
+      ...task,
+      id: Date.now() + Math.floor(Math.random() * 1000).toString(), // 避免ID重复
+      createTime: task.createTime || new Date().toLocaleDateString().replace(/\//g, '-') // 优先用Excel日期，无则补当前时间
+    }));
+
+    // 合并数据并写入
+    const updatedData = [...existingData, ...newTaskList];
+    await fs.writeJson(dataPath, updatedData, { spaces: 2 });
+
+    res.json({ 
+      code: 200, 
+      msg: `批量新增成功，共新增${newTaskList.length}条任务`,
+      path: dataPath,
+      data: {
+        total: updatedData.length,
+        addedCount: newTaskList.length
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      code: 500, 
+      msg: '批量新增任务失败', 
       error: err.message,
       path: dataPath
     });
