@@ -25,23 +25,12 @@
           />
         </el-form-item>
 
-        <el-form-item label="项目名称">
+        <el-form-item label="关键词搜索">
           <el-input
-            v-model="searchForm.projectName"
-            placeholder="请输入项目名称"
+            v-model="searchForm.keyword"
+            placeholder="搜索项目名称/任务名称/工作内容"
             size="mini"
-            style="width: 200px"
-            clearable
-            @keyup.enter.native="search"
-          />
-        </el-form-item>
-
-        <el-form-item label="任务名称">
-          <el-input
-            v-model="searchForm.taskName"
-            placeholder="请输入任务名称"
-            size="mini"
-            style="width: 200px"
+            style="width: 300px"
             clearable
             @keyup.enter.native="search"
           />
@@ -129,26 +118,19 @@
           prop="createTime"
           label="日期"
           width="120"
+          header-align="center"
+          sortable
           align="center"
         >
           <template slot-scope="scope">
-            <span
-              v-html="
-                highlightText(
-                  scope.row.createTime,
-                  searchForm.dateRange.join('')
-                )
-              "
-            ></span>
+            <span v-html="highlightText(scope.row.createTime, '')"></span>
           </template>
         </el-table-column>
 
         <el-table-column prop="projectName" label="项目名称" min-width="200">
           <template slot-scope="scope">
             <span
-              v-html="
-                highlightText(scope.row.projectName, searchForm.projectName)
-              "
+              v-html="highlightText(scope.row.projectName, searchForm.keyword)"
             ></span>
           </template>
         </el-table-column>
@@ -156,7 +138,7 @@
         <el-table-column prop="taskName" label="任务名称" min-width="200">
           <template slot-scope="scope">
             <span
-              v-html="highlightText(scope.row.taskName, searchForm.taskName)"
+              v-html="highlightText(scope.row.taskName, searchForm.keyword)"
             ></span>
           </template>
         </el-table-column>
@@ -170,10 +152,7 @@
             <div
               class="work-content"
               v-html="
-                highlightText(
-                  scope.row.weeklyWorkContent,
-                  searchForm.weeklyWorkContent
-                )
+                highlightText(scope.row.weeklyWorkContent, searchForm.keyword)
               "
             ></div>
           </template>
@@ -198,7 +177,7 @@
         <el-table-column prop="note" label="备注" min-width="150">
           <template slot-scope="scope">
             <span
-              v-html="highlightText(scope.row.note, searchForm.note)"
+              v-html="highlightText(scope.row.note, searchForm.keyword)"
             ></span>
           </template>
         </el-table-column>
@@ -223,7 +202,6 @@
         </el-table-column>
       </el-table>
 
-      <!-- 空数据提示 -->
       <div v-if="!loading && tableData.length === 0" class="empty-data">
         <el-empty description="暂无任务数据"></el-empty>
       </div>
@@ -329,18 +307,12 @@ export default {
   name: "TaskManagement",
   data() {
     return {
-      // 加载状态
       loading: false,
       saveLoading: false,
-      // 弹窗显示状态
       dialogVisible: false,
-      // 搜索表单
       searchForm: {
         dateRange: [],
-        projectName: "",
-        taskName: "",
-        weeklyWorkContent: "",
-        note: "",
+        keyword: "",
         projectStatus: "",
       },
       pickerOptions: {
@@ -374,10 +346,8 @@ export default {
           },
         ],
       },
-      // 数据源
       allData: [],
       tableData: [],
-      // 编辑表单
       form: {
         id: "",
         createTime: "",
@@ -387,7 +357,6 @@ export default {
         projectStatus: "",
         note: "",
       },
-      // 表单校验规则
       formRules: {
         createTime: [
           { required: true, message: "请选择日期", trigger: "change" },
@@ -405,43 +374,25 @@ export default {
           { required: true, message: "请选择项目进度", trigger: "change" },
         ],
       },
-      // 窗口resize处理函数（用于销毁监听）
       resizeHandler: null,
     };
   },
   mounted() {
-    // 设置默认时间范围
     this.setDefaultDateRange();
-    // 获取任务列表
     this.getTaskList();
-    // 窗口大小变化监听
     this.resizeHandler = () => {
-      this.tableData = [...this.tableData]; // 触发表格重渲染
+      this.tableData = [...this.tableData];
     };
     window.addEventListener("resize", this.resizeHandler);
   },
   beforeDestroy() {
-    // 清理事件监听，避免内存泄漏
-    if (this.resizeHandler) {
-      window.removeEventListener("resize", this.resizeHandler);
-    }
+    window.removeEventListener("resize", this.resizeHandler);
   },
   methods: {
-    // ====================== 工具方法 ======================
-    /**
-     * 安全去除字符串首尾空格
-     * @param {any} value - 要处理的值
-     * @returns {string} 处理后的字符串
-     */
     safeStrip(value) {
       if (value === null || value === undefined) return "";
       return String(value).trim();
     },
-
-    /**
-     * 获取本周的日期范围（周一到周日）
-     * @returns {string[]} [周一, 周日]
-     */
     getWeekRange() {
       const now = new Date();
       const dayOfWeek = now.getDay();
@@ -451,477 +402,265 @@ export default {
       const sundayOffset = dayOfWeek === 0 ? 0 : 6 - dayOfWeek;
       const sunday = new Date(now);
       sunday.setDate(now.getDate() + sundayOffset);
-
-      const formatDate = (date) => {
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, "0");
-        const day = date.getDate().toString().padStart(2, "0");
-        return `${year}-${month}-${day}`;
-      };
-
-      return [formatDate(monday), formatDate(sunday)];
+      const fmt = (d) =>
+        `${d.getFullYear()}-${(d.getMonth() + 1)
+          .toString()
+          .padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+      return [fmt(monday), fmt(sunday)];
     },
-
-    /**
-     * 设置默认时间范围为本周
-     */
     setDefaultDateRange() {
       this.searchForm.dateRange = this.getWeekRange();
     },
-
-    /**
-     * 根据进度获取标签类型
-     * @param {string} status - 项目进度
-     * @returns {string} 标签类型
-     */
     getStatusTagType(status) {
-      const statusMap = {
-        已完成: "success",
-        测试中: "warning",
-        进行中: "primary",
-      };
-      return statusMap[status] || "info";
-    },
-
-    /**
-     * 高亮搜索关键词（处理特殊字符）
-     * @param {string} text - 原文本
-     * @param {string} keyword - 关键词
-     * @returns {string} 高亮后的HTML字符串
-     */
-    highlightText(text, keyword) {
-      if (!keyword || !text) return text;
-      // 正则转义特殊字符
-      const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const reg = new RegExp(escapedKeyword, "gi");
-      return text.replace(
-        reg,
-        (match) => `<span class="highlight-text">${match}</span>`
+      return (
+        { 已完成: "success", 测试中: "warning", 进行中: "primary" }[status] ||
+        "info"
       );
     },
-
-    /**
-     * 格式化Excel日期为yyyy-MM-dd（修复Excel 1900闰年bug）
-     * @param {any} excelDate - Excel中的日期值
-     * @returns {string} 格式化后的日期
-     */
+    highlightText(text, keyword) {
+      if (!keyword || !text) return text;
+      const key = this.safeStrip(keyword).replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+      return text.replace(
+        new RegExp(key, "gi"),
+        (m) => `<span class="highlight-text">${m}</span>`
+      );
+    },
     formatExcelDate(excelDate) {
       if (!excelDate) return "";
-      const strippedDate = this.safeStrip(excelDate);
-
-      // 已是yyyy-MM-dd格式
-      if (/^\d{4}-\d{2}-\d{2}$/.test(strippedDate)) {
-        return strippedDate;
+      const s = this.safeStrip(excelDate);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      if (!isNaN(Number(s))) {
+        const serial = Number(s);
+        const base =
+          serial > 60 ? new Date(1900, 0, 1) : new Date(1899, 11, 30);
+        const t = new Date(base);
+        t.setDate(base.getDate() + serial - 1);
+        return t.toISOString().split("T")[0];
       }
-
-      // Excel日期序列号（处理1900闰年bug）
-      if (!isNaN(Number(strippedDate))) {
-        const excelSerial = Number(strippedDate);
-        // Excel 1900年错误地认为是闰年，序列号60对应1900-02-29（实际不存在）
-        const baseDate =
-          excelSerial > 60 ? new Date(1900, 0, 1) : new Date(1899, 11, 30);
-        const targetDate = new Date(baseDate);
-        targetDate.setDate(baseDate.getDate() + excelSerial - 1);
-        return targetDate.toISOString().split("T")[0];
-      }
-
-      // 其他日期格式转换
-      const dateObj = new Date(strippedDate);
-      if (!isNaN(dateObj.getTime())) {
-        return dateObj.toISOString().split("T")[0];
-      }
-
-      return "";
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
     },
-
-    /**
-     * 读取Excel文件
-     * @param {File} file - Excel文件
-     * @returns {Promise<XLSX.WorkBook>} Excel工作簿
-     */
     readExcelFile(file) {
       return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
+        const r = new FileReader();
+        r.onload = (e) => {
           try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: "array" });
-            resolve(workbook);
+            resolve(
+              XLSX.read(new Uint8Array(e.target.result), { type: "array" })
+            );
           } catch (err) {
-            reject(new Error(`解析Excel失败：${err.message}`));
+            reject(err);
           }
         };
-        reader.onerror = () => reject(new Error("文件读取失败"));
-        reader.readAsArrayBuffer(file);
+        r.onerror = () => reject(new Error("读取失败"));
+        r.readAsArrayBuffer(file);
       });
     },
-
-    /**
-     * 处理项目数据生成周报文本
-     * @param {Array} data - 任务数据
-     * @returns {Array} 格式化后的周报内容数组
-     */
     processProjectData(data) {
-      return data.reduce((result, item, index) => {
-        const projectName = this.safeStrip(item.projectName);
-        const taskName = this.safeStrip(item.taskName);
-        const workContent = this.safeStrip(item.weeklyWorkContent);
-        const projectStatus = this.safeStrip(item.projectStatus);
-        const note = this.safeStrip(item.note);
-
-        if (!projectName || !taskName || !projectStatus) return result;
-
-        let workText = "";
-        if (workContent) {
-          const workLines = workContent
+      return data.reduce((res, item, i) => {
+        const pn = this.safeStrip(item.projectName),
+          tn = this.safeStrip(item.taskName),
+          wc = this.safeStrip(item.weeklyWorkContent),
+          ps = this.safeStrip(item.projectStatus),
+          note = this.safeStrip(item.note);
+        if (!pn || !tn || !ps) return res;
+        let wt = "";
+        if (wc) {
+          const lines = wc
             .split("\n")
-            .map((line) => this.safeStrip(line))
-            .filter((line) => line);
-
-          if (workLines.length > 0) {
-            const indent = "    ";
-            const formattedLines = workLines.map(
-              (line, subIndex) =>
-                `${indent}${index + 1}.${subIndex + 1}：${line.replace(
-                  /\n/g,
-                  `\n${indent}`
-                )}`
-            );
-            workText = "\n" + formattedLines.join("\n");
-          }
+            .map((l) => this.safeStrip(l))
+            .filter(Boolean);
+          if (lines.length)
+            wt =
+              "\n    " +
+              lines.map((l, j) => `${i + 1}.${j + 1}：${l}`).join("\n    ");
         }
-
-        let baseText = `${
-          index + 1
-        }、${projectName}项目：${taskName}，当前进度：${projectStatus}${
-          note ? `（备注：${note}）` : ""
-        }`;
-        if (workText) baseText += workText;
-
-        result.push(baseText);
-        return result;
+        res.push(
+          `${i + 1}、${pn}项目：${tn}，当前进度：${ps}${
+            note ? "（备注：" + note + "）" : ""
+          }${wt}`
+        );
+        return res;
       }, []);
     },
-
-    // ====================== 业务逻辑 ======================
-    /**
-     * 获取任务列表
-     */
     async getTaskList() {
       this.loading = true;
       try {
-        const res = await this.$axios.get("/api/tasks");
-        if (res.data.code === 200) {
-          this.allData = res.data.data;
+        const { data } = await this.$axios.get("/api/tasks");
+        if (data.code === 200) {
+          this.allData = data.data;
           this.tableData = [...this.allData];
-          this.search(); // 触发搜索过滤
+          this.search();
         }
-      } catch (err) {
-        this.$message.error("获取任务数据失败，请稍后重试");
-        console.error("获取任务列表失败：", err);
+      } catch (e) {
+        this.$message.error("获取失败");
       } finally {
         this.loading = false;
       }
     },
 
-    /**
-     * 搜索过滤数据
-     */
     search() {
-      let filteredData = [...this.allData];
-      const {
-        dateRange,
-        projectName,
-        taskName,
-        weeklyWorkContent,
-        note,
-        projectStatus,
-      } = this.searchForm;
+      let data = [...this.allData];
+      const { dateRange, keyword, projectStatus } = this.searchForm;
+      const kw = this.safeStrip(keyword).toLowerCase();
 
-      // 时间范围过滤（包含结束日期全天）
-      if (dateRange && dateRange.length === 2) {
-        const start = new Date(dateRange[0]);
-        const end = new Date(dateRange[1]);
-        end.setHours(23, 59, 59, 999); // 修复：包含结束日期的最后一秒
-        filteredData = filteredData.filter((item) => {
-          const taskTime = new Date(item.createTime);
-          return taskTime >= start && taskTime <= end;
+      // 时间
+      if (dateRange?.length === 2) {
+        const st = new Date(dateRange[0]),
+          ed = new Date(dateRange[1]);
+        ed.setHours(23, 59, 59, 999);
+        data = data.filter((it) => {
+          const t = new Date(it.createTime);
+          return t >= st && t <= ed;
         });
       }
 
-      // 关键词过滤（忽略大小写）
-      if (projectName) {
-        filteredData = filteredData.filter((item) =>
-          item.projectName.toLowerCase().includes(projectName.toLowerCase())
-        );
-      }
-      if (taskName) {
-        filteredData = filteredData.filter((item) =>
-          item.taskName.toLowerCase().includes(taskName.toLowerCase())
-        );
-      }
-      if (weeklyWorkContent) {
-        filteredData = filteredData.filter((item) =>
-          item.weeklyWorkContent
-            .toLowerCase()
-            .includes(weeklyWorkContent.toLowerCase())
-        );
-      }
-      if (note) {
-        filteredData = filteredData.filter((item) =>
-          item.note.toLowerCase().includes(note.toLowerCase())
-        );
+      // 关键词
+      if (kw) {
+        data = data.filter((it) => {
+          const pn = it.projectName?.toLowerCase() || "";
+          const tn = it.taskName?.toLowerCase() || "";
+          const wc = it.weeklyWorkContent?.toLowerCase() || "";
+          return pn.includes(kw) || tn.includes(kw) || wc.includes(kw);
+        });
       }
 
-      // 进度过滤
+      // 进度
       if (projectStatus) {
-        filteredData = filteredData.filter(
-          (item) => item.projectStatus === projectStatus
-        );
+        data = data.filter((it) => it.projectStatus === projectStatus);
       }
 
-      this.tableData = filteredData;
+      // 默认倒序
+      this.tableData = data.sort(
+        (a, b) => new Date(b.createTime) - new Date(a.createTime)
+      );
     },
-
-    /**
-     * 重置搜索条件
-     */
     resetSearch() {
       this.searchForm = {
         dateRange: this.getWeekRange(),
-        projectName: "",
-        taskName: "",
-        weeklyWorkContent: "",
-        note: "",
+        keyword: "",
         projectStatus: "",
       };
       this.search();
     },
-
-    // 获取本周星期四
     getCurrentWeekThursday() {
       const now = new Date();
-      const day = now.getDay(); // 0=周日,1=周一...5=周五,6=周六
-      const diff = (4 - day + 7) % 7; // 计算到周四的天数
-      const thursday = new Date(now);
-      thursday.setDate(now.getDate() + diff);
-      // 格式化 yyyy-MM-dd
-      const year = thursday.getFullYear();
-      const month = (thursday.getMonth() + 1).toString().padStart(2, "0");
-      const day2 = thursday.getDate().toString().padStart(2, "0");
-      return `${year}-${month}-${day2}`;
+      const d = now.getDay();
+      const add = (4 - d + 7) % 7;
+      const t = new Date(now);
+      t.setDate(now.getDate() + add);
+      return `${t.getFullYear()}-${(t.getMonth() + 1)
+        .toString()
+        .padStart(2, "0")}-${t.getDate().toString().padStart(2, "0")}`;
     },
-
-    /**
-     * 新增任务
-     */
     addTask() {
-      this.dialogVisible = false; // 先关闭防止DOM冲突
+      this.dialogVisible = false;
       this.$nextTick(() => {
-        // 重置表单
         this.form = {
           id: "",
-          createTime: this.getCurrentWeekThursday(), // 这里直接默认本周四
+          createTime: this.getCurrentWeekThursday(),
           projectName: "",
           taskName: "",
           weeklyWorkContent: "",
           projectStatus: "",
           note: "",
         };
-        // 清除校验
-        if (this.$refs.taskForm) {
-          this.$refs.taskForm.clearValidate();
-        }
+        this.$refs.taskForm?.clearValidate();
         this.dialogVisible = true;
       });
     },
-
-    /**
-     * 编辑任务
-     * @param {Object} row - 任务行数据
-     */
     editTask(row) {
       this.dialogVisible = false;
       this.$nextTick(() => {
         this.form = { ...row };
-        if (this.$refs.taskForm) {
-          this.$refs.taskForm.clearValidate();
-        }
+        this.$refs.taskForm?.clearValidate();
         this.dialogVisible = true;
       });
     },
-
-    /**
-     * 保存任务
-     */
     async saveTask() {
       try {
-        // 表单校验
         await this.$refs.taskForm.validate();
         this.saveLoading = true;
-
-        // 调用保存接口
-        const res = await this.$axios.post("/api/tasks/save", this.form);
-        if (res.data.code === 200) {
-          this.$message.success(this.form.id ? "编辑任务成功" : "新增任务成功");
+        const { data } = await this.$axios.post("/api/tasks/save", this.form);
+        if (data.code === 200) {
+          this.$message.success("保存成功");
           this.dialogVisible = false;
-          this.getTaskList(); // 刷新列表
-        } else {
-          this.$message.error(res.data.msg || "保存任务失败");
-        }
-      } catch (err) {
-        if (err.name !== "ValidationError") {
-          this.$message.error("保存任务失败，请稍后重试");
-          console.error("保存任务失败：", err);
+          this.getTaskList();
+        } else this.$message.error(data.msg || "失败");
+      } catch (e) {
+        if (e.name !== "ValidationError") {
+          this.$message.error("保存失败");
         }
       } finally {
         this.saveLoading = false;
       }
     },
-
-    /**
-     * 删除任务
-     * @param {string} id - 任务ID
-     */
     async deleteTask(id) {
       try {
-        await this.$confirm(
-          "确定要删除该任务吗？删除后无法恢复！",
-          "删除确认",
-          {
-            confirmButtonText: "确定",
-            cancelButtonText: "取消",
-            type: "warning",
-          }
-        );
-
-        const res = await this.$axios.post("/api/tasks/delete", { id });
-        if (res.data.code === 200) {
-          this.$message.success("删除任务成功");
-          this.getTaskList(); // 刷新列表
-        } else {
-          this.$message.error(res.data.msg || "删除任务失败");
-        }
-      } catch (err) {
-        if (err !== "cancel") {
-          this.$message.info("已取消删除");
-        }
+        await this.$confirm("确定删除？", "提示", { type: "warning" });
+        const { data } = await this.$axios.post("/api/tasks/delete", { id });
+        if (data.code === 200) {
+          this.$message.success("删除成功");
+          this.getTaskList();
+        } else this.$message.error("失败");
+      } catch (e) {
+        if (e !== "cancel") this.$message.info("已取消");
       }
     },
-
-    /**
-     * 生成周报
-     */
     generateWeeklyReport() {
-      if (this.tableData.length === 0) {
-        this.$message.warning("当前无筛选数据，无法生成周报");
-        return;
-      }
-
-      const formattedText = this.processProjectData(this.tableData);
-      if (formattedText.length === 0) {
-        this.$message.warning("无有效项目数据（项目名/进度不能为空）");
-        return;
-      }
-
-      // 生成文件并下载
-      const textContent = formattedText.join("\n");
-      const blob = new Blob([textContent], {
-        type: "text/plain; charset=utf-8",
-      });
-      const downloadLink = document.createElement("a");
-      const now = new Date();
-      const fileName = `周报_${now.getFullYear()}${(now.getMonth() + 1)
-        .toString()
-        .padStart(2, "0")}${now.getDate().toString().padStart(2, "0")}.txt`;
-
-      downloadLink.href = URL.createObjectURL(blob);
-      downloadLink.download = fileName;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-
-      // 清理资源
-      document.body.removeChild(downloadLink);
-      URL.revokeObjectURL(downloadLink.href);
-
-      this.$message.success(`周报生成成功！文件名：${fileName}`);
+      if (!this.tableData.length) return this.$message.warning("无数据");
+      const txt = this.processProjectData(this.tableData).join("\n");
+      const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `周报_${new Date().toISOString().split("T")[0]}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      this.$message.success("生成成功");
     },
-
-    /**
-     * 导出Excel
-     */
     exportExcel() {
-      if (this.tableData.length === 0) {
-        this.$message.warning("暂无数据可导出");
-        return;
-      }
-
-      // 格式化导出数据
-      const exportData = this.tableData.map((item) => ({
-        日期: item.createTime,
-        项目名称: item.projectName,
-        任务名称: item.taskName,
-        工作内容: item.weeklyWorkContent,
-        项目进度: item.projectStatus,
-        备注: item.note,
+      if (!this.tableData.length) return this.$message.warning("无数据");
+      const exp = this.tableData.map((it) => ({
+        日期: it.createTime,
+        项目名称: it.projectName,
+        任务名称: it.taskName,
+        工作内容: it.weeklyWorkContent,
+        项目进度: it.projectStatus,
+        备注: it.note,
       }));
-
-      // 生成Excel文件
-      const ws = XLSX.utils.json_to_sheet(exportData);
+      const ws = XLSX.utils.json_to_sheet(exp);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "项目任务数据");
-
-      // ============== 拼接时间文件名 ==============
-      let dateSuffix = new Date().toISOString().split("T")[0];
-      const { dateRange } = this.searchForm;
-      if (dateRange && dateRange.length === 2) {
-        const start = dateRange[0];
-        const end = dateRange[1];
-        dateSuffix = `${start}_${end}`;
-      }
-
-      const fileName = `日志_${dateSuffix}.xlsx`;
-      // ===========================================
-
-      XLSX.writeFile(wb, fileName);
-      this.$message.success("Excel导出成功");
+      XLSX.utils.book_append_sheet(wb, ws, "任务");
+      const suffix =
+        this.searchForm.dateRange?.length === 2
+          ? `${this.searchForm.dateRange[0]}_${this.searchForm.dateRange[1]}`
+          : new Date().toISOString().split("T")[0];
+      XLSX.writeFile(wb, `日志_${suffix}.xlsx`);
+      this.$message.success("导出成功");
     },
-
-    /**
-     * 触发文件选择框
-     */
     triggerFileInput() {
-      if (this.$refs.fileInput) {
-        this.$refs.fileInput.click();
-      }
+      this.$refs.fileInput?.click();
     },
-
-    /**
-     * 处理Excel上传
-     * @param {Event} e - 文件选择事件
-     */
     async handleExcelUpload(e) {
       const file = e.target.files[0];
       if (!file) return;
-
-      // 校验文件格式
-      const fileExt = file.name.split(".").pop().toLowerCase();
-      if (!["xlsx", "xls"].includes(fileExt)) {
-        this.$message.error("请上传.xlsx或.xls格式的Excel文件");
-        this.$refs.fileInput.value = ""; // 清空选择
+      const ext = file.name.split(".").pop().toLowerCase();
+      if (!["xlsx", "xls"].includes(ext)) {
+        this.$message.error("格式错误");
+        this.$refs.fileInput.value = "";
         return;
       }
-
       this.loading = true;
       try {
-        // 读取Excel文件
-        const workbook = await this.readExcelFile(file);
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-        // 校验表头
-        const headerRow = excelData[0]?.map((item) => this.safeStrip(item));
-        const requiredHeaders = [
+        const wb = await this.readExcelFile(file);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const head = json[0]?.map((it) => this.safeStrip(it)) || [];
+        const needs = [
           "日期",
           "项目名称",
           "任务名称",
@@ -929,91 +668,52 @@ export default {
           "项目进度",
           "备注",
         ];
-        const missingHeaders = requiredHeaders.filter(
-          (header) => !headerRow.includes(header)
-        );
-
-        if (missingHeaders.length > 0) {
-          this.$message.error(
-            `Excel表头格式错误！缺少字段：${missingHeaders.join("、")}`
-          );
+        const miss = needs.filter((h) => !head.includes(h));
+        if (miss.length) {
+          this.$message.error("缺少：" + miss.join("、"));
           return;
         }
-
-        // 格式化数据
-        const formattedData = [];
-        for (let i = 1; i < excelData.length; i++) {
-          const row = excelData[i];
-          if (!row || row.every((item) => this.safeStrip(item) === ""))
-            continue;
-
-          const taskData = {
+        const rows = [];
+        for (let i = 1; i < json.length; i++) {
+          const r = json[i];
+          if (!r || r.every((x) => !this.safeStrip(x))) continue;
+          const row = {
             id: "",
-            createTime: this.formatExcelDate(row[headerRow.indexOf("日期")]),
-            projectName: this.safeStrip(row[headerRow.indexOf("项目名称")]),
-            taskName: this.safeStrip(row[headerRow.indexOf("任务名称")]),
-            weeklyWorkContent: this.safeStrip(
-              row[headerRow.indexOf("工作内容")]
-            ),
-            projectStatus: this.safeStrip(row[headerRow.indexOf("项目进度")]),
-            note: this.safeStrip(row[headerRow.indexOf("备注")]),
+            createTime: this.formatExcelDate(r[head.indexOf("日期")]),
+            projectName: this.safeStrip(r[head.indexOf("项目名称")]),
+            taskName: this.safeStrip(r[head.indexOf("任务名称")]),
+            weeklyWorkContent: this.safeStrip(r[head.indexOf("工作内容")]),
+            projectStatus: this.safeStrip(r[head.indexOf("项目进度")]),
+            note: this.safeStrip(r[head.indexOf("备注")]),
           };
-
-          // 校验必填字段
           if (
-            taskData.projectName &&
-            taskData.taskName &&
-            taskData.weeklyWorkContent &&
-            taskData.projectStatus
-          ) {
-            formattedData.push(taskData);
-          }
+            row.projectName &&
+            row.taskName &&
+            row.weeklyWorkContent &&
+            row.projectStatus
+          )
+            rows.push(row);
         }
-
-        if (formattedData.length === 0) {
-          this.$message.warning(
-            "Excel文件中无有效任务数据（必填字段不能为空）"
-          );
+        if (!rows.length) {
+          this.$message.warning("无有效数据");
           return;
         }
-
-        // 确认覆盖数据
         await this.$confirm(
-          `即将覆盖现有${this.allData.length}条数据，导入${formattedData.length}条新数据，是否继续？`,
-          "数据覆盖警告",
-          {
-            confirmButtonText: "确认覆盖",
-            cancelButtonText: "取消",
-            type: "warning",
-            distinguishCancelAndClose: true,
-          }
+          `覆盖${this.allData.length}条，导入${rows.length}条？`,
+          "警告",
+          { type: "warning" }
         );
-
-        // 批量保存数据
         await this.$axios.post("/api/tasks/deleteAll");
-        const res = await this.$axios.post(
-          "/api/tasks/batchSave",
-          formattedData
-        );
-
-        if (res.data.code === 200) {
-          this.$message.success(
-            `Excel导入成功！共导入${formattedData.length}条有效数据`
-          );
-          this.getTaskList(); // 刷新列表
-        } else {
-          this.$message.error(`导入失败：${res.data.msg || "后端处理异常"}`);
-        }
-      } catch (err) {
-        if (err !== "cancel" && err !== "close") {
-          this.$message.error(`Excel导入失败：${err.message || "未知错误"}`);
-          console.error("Excel上传错误：", err);
-        }
+        const { data } = await this.$axios.post("/api/tasks/batchSave", rows);
+        if (data.code === 200) {
+          this.$message.success("导入成功");
+          this.getTaskList();
+        } else this.$message.error("导入失败");
+      } catch (e) {
+        if (e !== "cancel" && e !== "close")
+          this.$message.error("失败：" + e.message);
       } finally {
-        // 清空文件选择并关闭加载
-        if (this.$refs.fileInput) {
-          this.$refs.fileInput.value = "";
-        }
+        this.$refs.fileInput.value = "";
         this.loading = false;
       }
     },
@@ -1022,7 +722,6 @@ export default {
 </script>
 
 <style scoped>
-/* 容器样式 */
 .task-management-container {
   width: 99%;
   margin: 10px auto;
@@ -1032,8 +731,6 @@ export default {
   overflow: hidden;
   gap: 10px;
 }
-
-/* 搜索区域样式 */
 .search-area {
   padding: 15px 20px;
   background: #f8f9fa;
@@ -1041,32 +738,25 @@ export default {
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
-
 .search-form {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
 }
-
 .operation-buttons {
   margin-left: auto !important;
   display: flex;
   gap: 8px;
 }
-
-/* 文件输入框隐藏 */
 .file-input {
   display: none;
 }
-
-/* 表格区域样式 */
 .table-container {
   flex: 1;
   overflow: hidden;
   position: relative;
 }
-
 .empty-data {
   position: absolute;
   top: 50%;
@@ -1075,63 +765,40 @@ export default {
   width: 100%;
   text-align: center;
 }
-
-/* 工作内容样式 */
 .work-content {
   white-space: pre-wrap;
   line-height: 1.5;
   word-break: break-word;
 }
-
-/* 高亮文本样式 */
-.highlight-text {
+::v-deep .highlight-text {
   color: #f56c6c;
   font-weight: 600;
-  background-color: #fff2f2;
+  background: #fff2f2;
   padding: 0 2px;
   border-radius: 2px;
 }
 
-/* Element UI 样式穿透 */
 ::v-deep .el-table {
-  --el-table-header-text-color: #303133;
+  --el-table-header-text-color: #333;
   --el-table-row-hover-bg-color: #f8f9fa;
-  --el-table-current-row-bg-color: #e8f4ff;
 }
-
-::v-deep .el-table__body-wrapper {
-  scrollbar-width: thin;
-}
-
 ::v-deep .el-table__body-wrapper::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::v-deep .el-table__body-wrapper::-webkit-scrollbar-thumb {
-  background-color: #dcdfe6;
+  background: #dcdfe6;
   border-radius: 3px;
 }
-
-::v-deep .el-table__body-wrapper::-webkit-scrollbar-thumb:hover {
-  background-color: #c0c4cc;
-}
-
 ::v-deep .el-dialog__body {
   padding: 20px;
 }
 
-::v-deep .el-textarea {
-  width: 100%;
-}
-
-/* 适配小屏幕 */
 @media (max-width: 1200px) {
   .operation-buttons {
     margin-left: 0 !important;
     margin-top: 10px;
     width: 100%;
-    justify-content: flex-start;
   }
 }
 </style>
