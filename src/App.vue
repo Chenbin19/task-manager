@@ -1,6 +1,6 @@
 <template>
   <div class="task-management-container">
-    <!-- 筛选+操作按钮区 -->
+    <!-- ====== 筛选 + 操作按钮区 ====== -->
     <div class="search-area">
       <el-form
         :inline="true"
@@ -101,7 +101,7 @@
       </el-form>
     </div>
 
-    <!-- 表格展示区 -->
+    <!-- ====== 表格展示区 ====== -->
     <div class="table-container">
       <el-table
         :data="tableData"
@@ -163,6 +163,7 @@
           label="项目进度"
           width="120"
           align="center"
+          sortable
         >
           <template slot-scope="scope">
             <el-tag
@@ -207,7 +208,7 @@
       </div>
     </div>
 
-    <!-- 任务编辑弹窗 -->
+    <!-- ====== 任务编辑弹窗（新增 / 编辑复用） ====== -->
     <el-dialog
       :title="form.id ? '编辑任务' : '新增任务'"
       :visible.sync="dialogVisible"
@@ -303,20 +304,50 @@
 <script>
 import * as XLSX from "xlsx";
 
+/**
+ * 获取当前自然周的周一与周日，返回 ['yyyy-MM-dd', 'yyyy-MM-dd']
+ */
+function getCurrentWeekRange() {
+  const now = new Date();
+  const day = now.getDay(); // 0=周日, 1=周一 ...
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - mondayOffset);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d) =>
+    `${d.getFullYear()}-${(d.getMonth() + 1)
+      .toString()
+      .padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+  return [fmt(monday), fmt(sunday)];
+}
+
 export default {
   name: "TaskManagement",
   data() {
     return {
+      /* ---------- 状态 ---------- */
       loading: false,
       saveLoading: false,
       dialogVisible: false,
+
+      /* ---------- 查询条件 ---------- */
       searchForm: {
-        dateRange: [],
+        dateRange: getCurrentWeekRange(), // 默认当周周一 ~ 周日
         keyword: "",
         projectStatus: "",
       },
+
+      /* ---------- 日期快捷项 ---------- */
       pickerOptions: {
         shortcuts: [
+          {
+            text: "本周",
+            onClick(picker) {
+              const [start, end] = getCurrentWeekRange();
+              picker.$emit("pick", [new Date(start), new Date(end)]);
+            },
+          },
           {
             text: "最近一周",
             onClick(picker) {
@@ -346,8 +377,12 @@ export default {
           },
         ],
       },
+
+      /* ---------- 表格数据 ---------- */
       allData: [],
       tableData: [],
+
+      /* ---------- 表单（新增/编辑） ---------- */
       form: {
         id: "",
         createTime: "",
@@ -357,6 +392,8 @@ export default {
         projectStatus: "",
         note: "",
       },
+
+      /* ---------- 表单校验规则 ---------- */
       formRules: {
         createTime: [
           { required: true, message: "请选择日期", trigger: "change" },
@@ -378,7 +415,6 @@ export default {
     };
   },
   mounted() {
-    this.setDefaultDateRange();
     this.getTaskList();
     this.resizeHandler = () => {
       this.tableData = [...this.tableData];
@@ -389,34 +425,20 @@ export default {
     window.removeEventListener("resize", this.resizeHandler);
   },
   methods: {
+    /** 去除首尾空白，null/undefined 安全 */
     safeStrip(value) {
       if (value === null || value === undefined) return "";
       return String(value).trim();
     },
-    getWeekRange() {
-      const now = new Date();
-      const dayOfWeek = now.getDay();
-      const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - mondayOffset);
-      const sundayOffset = dayOfWeek === 0 ? 0 : 6 - dayOfWeek;
-      const sunday = new Date(now);
-      sunday.setDate(now.getDate() + sundayOffset);
-      const fmt = (d) =>
-        `${d.getFullYear()}-${(d.getMonth() + 1)
-          .toString()
-          .padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
-      return [fmt(monday), fmt(sunday)];
-    },
-    setDefaultDateRange() {
-      this.searchForm.dateRange = this.getWeekRange();
-    },
+
+    /** 项目进度 → el-tag type 映射 */
     getStatusTagType(status) {
       return (
         { 已完成: "success", 测试中: "warning", 进行中: "primary" }[status] ||
         "info"
       );
     },
+    /** 关键词高亮：将匹配文本包裹 <span class="highlight-text"> */
     highlightText(text, keyword) {
       if (!keyword || !text) return text;
       const key = this.safeStrip(keyword).replace(
@@ -428,6 +450,7 @@ export default {
         (m) => `<span class="highlight-text">${m}</span>`
       );
     },
+    /** 将 Excel 日期值（序列号 / 字符串）统一转为 yyyy-MM-dd */
     formatExcelDate(excelDate) {
       if (!excelDate) return "";
       const s = this.safeStrip(excelDate);
@@ -443,6 +466,7 @@ export default {
       const d = new Date(s);
       return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
     },
+    /** 读取 Excel 文件为 XLSX Workbook 对象 */
     readExcelFile(file) {
       return new Promise((resolve, reject) => {
         const r = new FileReader();
@@ -459,6 +483,7 @@ export default {
         r.readAsArrayBuffer(file);
       });
     },
+    /** 将任务数组转为周报文本行（带编号 + 工作内容子项） */
     processProjectData(data) {
       return data.reduce((res, item, i) => {
         const pn = this.safeStrip(item.projectName),
@@ -486,6 +511,7 @@ export default {
         return res;
       }, []);
     },
+    /** 拉取全量任务列表并执行当前筛选 */
     async getTaskList() {
       this.loading = true;
       try {
@@ -502,12 +528,12 @@ export default {
       }
     },
 
+    /** 前端筛选：按时间范围、关键词、项目进度过滤并按日期倒序排列 */
     search() {
       let data = [...this.allData];
       const { dateRange, keyword, projectStatus } = this.searchForm;
       const kw = this.safeStrip(keyword).toLowerCase();
 
-      // 时间
       if (dateRange?.length === 2) {
         const st = new Date(dateRange[0]),
           ed = new Date(dateRange[1]);
@@ -518,7 +544,6 @@ export default {
         });
       }
 
-      // 关键词
       if (kw) {
         data = data.filter((it) => {
           const pn = it.projectName?.toLowerCase() || "";
@@ -528,24 +553,24 @@ export default {
         });
       }
 
-      // 进度
       if (projectStatus) {
         data = data.filter((it) => it.projectStatus === projectStatus);
       }
 
-      // 默认倒序
       this.tableData = data.sort(
         (a, b) => new Date(b.createTime) - new Date(a.createTime)
       );
     },
+    /** 重置查询条件为默认值（时间范围恢复为当周） */
     resetSearch() {
       this.searchForm = {
-        dateRange: this.getWeekRange(),
+        dateRange: getCurrentWeekRange(),
         keyword: "",
         projectStatus: "",
       };
       this.search();
     },
+    /** 获取当前周的周四日期（新增任务默认日期） */
     getCurrentWeekThursday() {
       const now = new Date();
       const d = now.getDay();
@@ -556,6 +581,7 @@ export default {
         .toString()
         .padStart(2, "0")}-${t.getDate().toString().padStart(2, "0")}`;
     },
+    /** 打开新增任务弹窗，日期默认为本周四 */
     addTask() {
       this.dialogVisible = false;
       this.$nextTick(() => {
@@ -572,6 +598,7 @@ export default {
         this.dialogVisible = true;
       });
     },
+    /** 打开编辑弹窗，回填当前行数据 */
     editTask(row) {
       this.dialogVisible = false;
       this.$nextTick(() => {
@@ -580,6 +607,7 @@ export default {
         this.dialogVisible = true;
       });
     },
+    /** 保存任务（新增 / 编辑共用） */
     async saveTask() {
       try {
         await this.$refs.taskForm.validate();
@@ -598,6 +626,7 @@ export default {
         this.saveLoading = false;
       }
     },
+    /** 删除任务（二次确认后调用后端） */
     async deleteTask(id) {
       try {
         await this.$confirm("确定删除？", "提示", { type: "warning" });
@@ -610,6 +639,7 @@ export default {
         if (e !== "cancel") this.$message.info("已取消");
       }
     },
+    /** 根据当前表格数据生成周报 TXT 并下载 */
     generateWeeklyReport() {
       if (!this.tableData.length) return this.$message.warning("无数据");
       const txt = this.processProjectData(this.tableData).join("\n");
@@ -622,6 +652,7 @@ export default {
       document.body.removeChild(a);
       this.$message.success("生成成功");
     },
+    /** 将当前表格数据导出为 Excel 文件 */
     exportExcel() {
       if (!this.tableData.length) return this.$message.warning("无数据");
       const exp = this.tableData.map((it) => ({
@@ -642,9 +673,11 @@ export default {
       XLSX.writeFile(wb, `日志_${suffix}.xlsx`);
       this.$message.success("导出成功");
     },
+    /** 触发隐藏的文件选择框 */
     triggerFileInput() {
       this.$refs.fileInput?.click();
     },
+    /** 导入 Excel：解析文件 → 校验表头 → 覆盖写入后端 */
     async handleExcelUpload(e) {
       const file = e.target.files[0];
       if (!file) return;
