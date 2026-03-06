@@ -104,6 +104,7 @@
     <!-- ====== 表格展示区 ====== -->
     <div class="table-container">
       <el-table
+        ref="taskTable"
         :data="tableData"
         border
         fit
@@ -113,6 +114,7 @@
         v-loading="loading"
         element-loading-text="数据加载中..."
         highlight-current-row
+        @sort-change="handleSortChange"
       >
         <el-table-column
           prop="createTime"
@@ -381,6 +383,8 @@ export default {
       /* ---------- 表格数据 ---------- */
       allData: [],
       tableData: [],
+      tableSortProp: null,
+      tableSortOrder: null,
 
       /* ---------- 表单（新增/编辑） ---------- */
       form: {
@@ -560,6 +564,38 @@ export default {
       this.tableData = data.sort(
         (a, b) => new Date(b.createTime) - new Date(a.createTime)
       );
+      this.tableSortProp = null;
+      this.tableSortOrder = null;
+    },
+    /** 表格列头排序：同步排序结果到 tableData，使周报/导出与当前显示顺序一致 */
+    handleSortChange({ column, prop, order }) {
+      if (!prop || !order) {
+        this.tableData = [...this.tableData].sort(
+          (a, b) => new Date(b.createTime) - new Date(a.createTime)
+        );
+        this.tableSortProp = null;
+        this.tableSortOrder = null;
+        return;
+      }
+      this.tableSortProp = prop;
+      this.tableSortOrder = order;
+      const isAsc = order === "ascending";
+      this.tableData = [...this.tableData].sort((a, b) => {
+        let va = a[prop];
+        let vb = b[prop];
+        if (prop === "createTime") {
+          return isAsc
+            ? new Date(va) - new Date(vb)
+            : new Date(vb) - new Date(va);
+        }
+        if (prop === "projectStatus") {
+          const orderMap = { 进行中: 1, 测试中: 2, 已完成: 3 };
+          va = orderMap[va] != null ? orderMap[va] : va;
+          vb = orderMap[vb] != null ? orderMap[vb] : vb;
+        }
+        if (va === vb) return 0;
+        return isAsc ? (va < vb ? -1 : 1) : va < vb ? 1 : -1;
+      });
     },
     /** 重置查询条件为默认值（时间范围恢复为当周） */
     resetSearch() {
